@@ -12,6 +12,7 @@ import { useExams } from './hooks/useExams';
 import { useAnalysis } from './hooks/useAnalysis';
 import { useAI } from './hooks/useAI';
 
+import { generateTesterExam, generateEmptyExam, persistExamFromFile } from './services/testerService';
 import { fetchExamById } from './services/firestoreService';
 
 // Components
