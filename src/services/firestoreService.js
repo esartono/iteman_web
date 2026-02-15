@@ -97,6 +97,8 @@ export const createExam = async (userId, examData) => {
       title: examData.title || 'Untitled Exam',
       description: examData.description || '',
       questionCount: Array.isArray(examData.questions) ? examData.questions.length : 0,
+      submissionCount: Array.isArray(examData.submissions) ? examData.submissions.length : 0,
+      answerKey: examData.answerKey || [],
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       importedFromFile: !!examData.importedFromFile || false,

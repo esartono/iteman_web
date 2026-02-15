@@ -119,7 +119,7 @@ const ExamCard = ({ exam, onViewAnalysis, onDelete }) => {
           {exam.answerKey?.length || 0} Soal
         </div>
         <div className="bg-indigo-50 px-3 py-1 rounded-full text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-          {exam.submissions?.length || 0} Siswa
+          {exam.submissionCount || 0} Siswa
         </div>
       </div>
 

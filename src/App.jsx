@@ -12,8 +12,7 @@ import { useExams } from './hooks/useExams';
 import { useAnalysis } from './hooks/useAnalysis';
 import { useAI } from './hooks/useAI';
 
-// Services
-import { generateTesterExam, generateEmptyExam, generateExamFromFile, persistExamFromFile } from './services/testerService';
+import { fetchExamById } from './services/firestoreService';
 
 // Components
 import AuthPage from './components/AuthPage';
@@ -45,6 +44,7 @@ const App = () => {
   const [view, setView] = useState(VIEWS.DASHBOARD);
   const [activeExam, setActiveExam] = useState(null);
   const [createViewMode, setCreateViewMode] = useState('manual'); // 'manual' or 'upload'
+  const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
   // Validate config and debug logging on mount
   useEffect(() => {
@@ -112,10 +112,24 @@ const App = () => {
     }
   };
 
-  const handleViewAnalysis = (exam) => {
-    setActiveExam(exam);
-    analyze(exam);
-    setView(VIEWS.ANALYZE);
+  const handleViewAnalysis = async (exam) => {
+    setIsFetchingDetails(true);
+    try {
+      const fullExam = await fetchExamById(user.uid, exam.id);
+      if (!fullExam) {
+        alert('Gagal memuat detail ujian. Data mungkin tidak ditemukan.');
+        return;
+      }
+      
+      setActiveExam(fullExam);
+      analyze(fullExam);
+      setView(VIEWS.ANALYZE);
+    } catch (err) {
+      console.error('Error fetching exam details:', err);
+      alert('Terjadi kesalahan saat memuat data analisis.');
+    } finally {
+      setIsFetchingDetails(false);
+    }
   };
 
   const handleDeleteExam = async (examId) => {
@@ -225,8 +239,9 @@ const App = () => {
         />
       )}
 
-      {/* Loading Spinner */}
+      {/* Loading Spinners */}
       {aiLoading && <LoadingSpinner message="AI sedang menganalisis data..." />}
+      {isFetchingDetails && <LoadingSpinner message="Memuat detail ujian..." />}
     </div>
   );
 };

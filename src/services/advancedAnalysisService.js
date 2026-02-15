@@ -31,7 +31,8 @@ export const runAdvancedAnalysis = (exam) => {
         questionAnswers,
         exam.answerKey[questionIndex],
         studentScores,
-        exam.submissions.length
+        exam.submissions.length,
+        exam.questions
       );
     });
 
@@ -43,10 +44,11 @@ export const runAdvancedAnalysis = (exam) => {
     );
 
     // 4. Summary statistics
-    const summary = generateSummary(questionAnalyses, reliability);
+    const summary = generateSummary(questionAnalyses, reliability, studentScores);
 
     return {
       success: true,
+
       data: {
         questions: questionAnalyses,
         reliability,
@@ -89,7 +91,7 @@ function calculateStudentScores(exam) {
  * @param {number} totalStudents - Jumlah siswa
  * @returns {Object} Detailed question analysis
  */
-function analyzeQuestion(questionIndex, answers, correctAnswer, studentScores, totalStudents) {
+function analyzeQuestion(questionIndex, answers, correctAnswer, studentScores, totalStudents, examQuestions) {
   // 1. Count correct/incorrect
   const correct = answers.filter(a => a === correctAnswer).length;
   const incorrect = totalStudents - correct;
@@ -98,7 +100,7 @@ function analyzeQuestion(questionIndex, answers, correctAnswer, studentScores, t
   const pValue = correct / totalStudents;
 
   // 3. D-value (Daya Pembeda) - menggunakan 27% method
-  const groupSize = Math.ceil(totalStudents * 0.27);
+  const groupSize = Math.max(1, Math.ceil(totalStudents * 0.27));
   const topStudents = studentScores
     .map((score, idx) => ({ score, idx }))
     .sort((a, b) => b.score - a.score)
@@ -114,19 +116,29 @@ function analyzeQuestion(questionIndex, answers, correctAnswer, studentScores, t
   const correctTop = topStudents.filter(idx => answers[idx] === correctAnswer).length;
   const correctBottom = bottomStudents.filter(idx => answers[idx] === correctAnswer).length;
 
-  const dValue = (correctTop - correctBottom) / groupSize;
+  const dValue = groupSize > 0 ? (correctTop - correctBottom) / groupSize : 0;
 
-  // 4. Point Biserial Correlation
-  const pointBiserial = calculatePointBiserial(answers, studentScores, correctAnswer);
+  // Pre-calculate total score mean and SD for efficiency
+  const meanTotal = studentScores.reduce((a, b) => a + b, 0) / totalStudents;
+  const variance = studentScores.reduce((sum, s) => sum + Math.pow(s - meanTotal, 2), 0) / totalStudents;
+  const sd = Math.sqrt(variance);
+
+  // 4. Point Biserial Correlation (for the correct answer)
+  const pointBiserial = calculateOptionPointBiserial(answers, studentScores, correctAnswer, sd);
 
   // 5. Distractor Analysis
-  const distractors = analyzeDistractors(answers, correctAnswer, totalStudents);
+  const distractors = analyzeDistractors(answers, correctAnswer, totalStudents, studentScores, sd);
 
   // 6. Determine status
   const status = determineQuestionStatus(pValue, dValue, pointBiserial);
 
+  // 7. Get Question Text
+  const question = examQuestions?.[questionIndex];
+  const questionText = question?.prompt || question?.text || `Soal ${questionIndex + 1}`;
+
   return {
     index: questionIndex + 1,
+    questionText,
     pValue: pValue.toFixed(3),
     dValue: dValue.toFixed(3),
     pointBiserial: pointBiserial.toFixed(3),
@@ -145,42 +157,42 @@ function analyzeQuestion(questionIndex, answers, correctAnswer, studentScores, t
 }
 
 /**
- * Hitung Point Biserial Correlation
- * Korelasi antara jawaban item dengan skor total
- * @param {Array} answers - Answers for this question
- * @param {Array} scores - Total scores for all students
- * @param {number} correctAnswer - Correct answer
- * @returns {number} Point biserial correlation
+ * Hitung Point Biserial Correlation untuk sebuah Pilihan Jawaban
+ * Korelasi antara memilih sebuah opsi dengan skor total.
+ * @param {Array} answers - Jawaban siswa untuk soal ini.
+ * @param {Array} scores - Skor total semua siswa.
+ * @param {number} optionIndex - Indeks dari pilihan yang dianalisis (0-3).
+ * @param {number} sd - Standar deviasi dari skor total (sudah dihitung).
+ * @returns {number} Korelasi point biserial untuk pilihan tersebut.
  */
-function calculatePointBiserial(answers, scores, correctAnswer) {
+function calculateOptionPointBiserial(answers, scores, optionIndex, sd) {
   const n = answers.length;
   
-  // Kelompok yang benar dan salah
-  const correctGroup = scores.filter((_, idx) => answers[idx] === correctAnswer);
-  const incorrectGroup = scores.filter((_, idx) => answers[idx] !== correctAnswer);
+  // Kelompok siswa yang memilih opsi ini
+  const chosenGroupScores = scores.filter((_, idx) => answers[idx] === optionIndex);
 
-  const p = correctGroup.length / n; // Proporsi benar
-  const q = 1 - p; // Proporsi salah
-
-  if (p === 0 || p === 1 || correctGroup.length === 0 || incorrectGroup.length === 0) {
+  // Jika tidak ada yang memilih atau semua memilih, tidak ada varians pilihan, korelasi 0
+  if (chosenGroupScores.length === 0 || chosenGroupScores.length === n) {
     return 0;
   }
 
-  // Mean scores untuk yang benar dan salah
-  const meanCorrect = correctGroup.reduce((a, b) => a + b, 0) / correctGroup.length;
-  const meanIncorrect = incorrectGroup.reduce((a, b) => a + b, 0) / incorrectGroup.length;
+  // Kelompok siswa yang TIDAK memilih opsi ini
+  const notChosenGroupScores = scores.filter((_, idx) => answers[idx] !== optionIndex);
+  
+  const p = chosenGroupScores.length / n; // Proporsi yang memilih
+  const q = 1 - p; // Proporsi yang tidak memilih
 
-  // Standard deviation of total scores
-  const meanTotal = scores.reduce((a, b) => a + b, 0) / n;
-  const variance = scores.reduce((sum, s) => sum + Math.pow(s - meanTotal, 2), 0) / n;
-  const sd = Math.sqrt(variance);
-
+  // Rata-rata skor untuk setiap kelompok
+  const meanChosen = chosenGroupScores.reduce((a, b) => a + b, 0) / chosenGroupScores.length;
+  const meanNotChosen = notChosenGroupScores.reduce((a, b) => a + b, 0) / notChosenGroupScores.length;
+  
+  // Jika standar deviasi total 0, korelasi 0
   if (sd === 0) return 0;
 
-  // Point Biserial formula: rpb = (meanCorrect - meanIncorrect) / sd * sqrt(p*q)
-  const rpb = ((meanCorrect - meanIncorrect) / sd) * Math.sqrt(p * q);
+  // Rumus Point Biserial: rpb = (meanChosen - meanNotChosen) / sd * sqrt(p*q)
+  const rpb = ((meanChosen - meanNotChosen) / sd) * Math.sqrt(p * q);
 
-  return rpb;
+  return isNaN(rpb) ? 0 : rpb; // Pastikan tidak mengembalikan NaN
 }
 
 /**
@@ -188,9 +200,11 @@ function calculatePointBiserial(answers, scores, correctAnswer) {
  * @param {Array} answers - Jawaban siswa untuk soal ini
  * @param {number} correctAnswer - Jawaban benar
  * @param {number} totalStudents - Total siswa
+ * @param {Array} studentScores - Skor total semua siswa
+ * @param {number} sd - Standar deviasi dari skor total
  * @returns {Array} Distractor analysis
  */
-function analyzeDistractors(answers, correctAnswer, totalStudents) {
+function analyzeDistractors(answers, correctAnswer, totalStudents, studentScores, sd) {
   const options = ['A', 'B', 'C', 'D'];
   const distractors = [];
 
@@ -198,12 +212,16 @@ function analyzeDistractors(answers, correctAnswer, totalStudents) {
     const count = answers.filter(a => a === idx).length;
     const percentage = ((count / totalStudents) * 100).toFixed(1);
     
+    // Hitung point biserial untuk setiap opsi
+    const pointBiserial = calculateOptionPointBiserial(answers, studentScores, idx, sd);
+    
     distractors.push({
       option,
       count,
       percentage: percentage + '%',
       isCorrect: idx === correctAnswer,
-      effectiveness: idx === correctAnswer ? 'CORRECT' : analyzeDistractorEffectiveness(count, totalStudents)
+      effectiveness: idx === correctAnswer ? 'CORRECT' : analyzeDistractorEffectiveness(count, totalStudents),
+      pointBiserial: pointBiserial.toFixed(3) // Tambahkan data baru
     });
   });
 
@@ -352,14 +370,29 @@ function getDiscriminationLevel(dValue) {
 /**
  * Generate summary statistics
  */
-function generateSummary(questionAnalyses, reliability) {
+function generateSummary(questionAnalyses, reliability, studentScores = []) {
   const goodQuestions = questionAnalyses.filter(q => q.status === 'GOOD').length;
   const fairQuestions = questionAnalyses.filter(q => q.status === 'FAIR').length;
   const poorQuestions = questionAnalyses.filter(q => q.status === 'POOR').length;
 
-  // Average metrics
-  const avgP = questionAnalyses.reduce((sum, q) => sum + parseFloat(q.pValue), 0) / questionAnalyses.length;
-  const avgD = questionAnalyses.reduce((sum, q) => sum + parseFloat(q.dValue), 0) / questionAnalyses.length;
+  // Average metrics for items
+  const avgP = questionAnalyses.length > 0 ? questionAnalyses.reduce((sum, q) => sum + parseFloat(q.pValue), 0) / questionAnalyses.length : 0;
+  const avgD = questionAnalyses.length > 0 ? questionAnalyses.reduce((sum, q) => sum + parseFloat(q.dValue), 0) / questionAnalyses.length : 0;
+  
+  // New: Descriptive statistics for total scores
+  let scoreStats = {};
+  if (studentScores.length > 0) {
+    const mean = studentScores.reduce((a, b) => a + b, 0) / studentScores.length;
+    const variance = studentScores.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / studentScores.length;
+    const stdDev = Math.sqrt(variance);
+    scoreStats = {
+      meanScore: mean.toFixed(2),
+      scoreVariance: variance.toFixed(2),
+      scoreStdDev: stdDev.toFixed(2),
+      minScore: Math.min(...studentScores),
+      maxScore: Math.max(...studentScores),
+    };
+  }
 
   return {
     totalQuestions: questionAnalyses.length,
@@ -371,6 +404,7 @@ function generateSummary(questionAnalyses, reliability) {
     averageDiscrimination: avgD.toFixed(3),
     reliability: reliability.reliability,
     alpha: parseFloat(reliability.alpha),
+    ...scoreStats, // Add the new stats
     recommendation: generateRecommendation(goodQuestions, fairQuestions, poorQuestions, parseFloat(reliability.alpha))
   };
 }

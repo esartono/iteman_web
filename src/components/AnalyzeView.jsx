@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronLeft, Brain, AlertCircle, CheckCircle2, FileText, User } from 'lucide-react';
 import StatCard from './StatCard';
+import DistractorChart from './DistractorChart';
 
 /**
  * View untuk analisis soal dengan metrics ITEMAN lengkap
@@ -96,22 +97,38 @@ const AnalyzeView = ({
           </div>
 
           {/* Test Quality Card */}
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-[2rem] border border-blue-200 shadow-sm">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase text-blue-600 mb-2 tracking-widest">
-                  Test Quality Summary
-                </p>
-                <p className="text-sm font-bold text-blue-900 mt-2">
-                  Rata-rata Kesukaran: <span className="text-lg">{summary.averageDifficulty}</span>
-                </p>
-                <p className="text-sm font-bold text-blue-900 mt-1">
-                  Rata-rata Daya Pembeda: <span className="text-lg">{summary.averageDiscrimination}</span>
-                </p>
+          {summary.meanScore !== undefined && (
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-[2rem] border border-blue-200 shadow-sm">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">
+                    Ringkasan Kualitas Tes
+                  </p>
+                </div>
+                <div className="text-4xl">📊</div>
               </div>
-              <div className="text-4xl">📊</div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                <div className="font-bold text-blue-900">
+                  Rata-rata Skor: <span className="text-base font-black">{summary.meanScore}</span>
+                </div>
+                <div className="font-bold text-blue-900">
+                  Std. Deviasi: <span className="text-base font-black">{summary.scoreStdDev}</span>
+                </div>
+                <div className="font-bold text-blue-900">
+                  Skor Min-Max: <span className="text-base font-black">{summary.minScore} - {summary.maxScore}</span>
+                </div>
+                <div className="font-bold text-blue-900">
+                  Varians Skor: <span className="text-base font-black">{summary.scoreVariance}</span>
+                </div>
+                <div className="font-bold text-blue-900">
+                  Avg. Kesukaran (P): <span className="text-base font-black">{summary.averageDifficulty}</span>
+                </div>
+                <div className="font-bold text-blue-900">
+                  Avg. Pembeda (D): <span className="text-base font-black">{summary.averageDiscrimination}</span>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -220,11 +237,16 @@ const AnalysisRow = ({ result, onAskAI, loadingAI }) => {
         <td className="p-4">
           <div className="text-[9px] space-y-1">
             {result.distractors.slice(0, 3).map((d, idx) => (
-              <div key={idx} className="flex items-center gap-1">
+              <div key={idx} className="flex items-center gap-2">
                 <span className={`font-bold ${d.isCorrect ? 'text-green-700' : 'text-slate-600'}`}>
                   {d.option}:
                 </span>
-                <span className="text-slate-600">{d.percentage}</span>
+                <span className="text-slate-600 font-mono">{d.percentage}</span>
+                {!d.isCorrect && (
+                    <span className={`font-mono ${d.pointBiserial < 0 ? 'text-slate-500' : 'text-red-500'}`}>
+                        ({d.pointBiserial})
+                    </span>
+                )}
               </div>
             ))}
           </div>
@@ -270,22 +292,35 @@ const AnalysisRow = ({ result, onAskAI, loadingAI }) => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {result.distractors.map((d, idx) => (
                     <div key={idx} className={`p-3 rounded-lg border ${d.isCorrect ? 'bg-green-50 border-green-200' : 'bg-slate-100 border-slate-200'}`}>
-                      <p className="text-[10px] font-bold uppercase text-slate-600">{d.option}</p>
+                      <div className="flex justify-between items-baseline">
+                        <p className="text-[10px] font-bold uppercase text-slate-600">{d.option}</p>
+                        <span className={`text-[9px] font-semibold ${
+                          d.isCorrect
+                            ? 'text-green-700'
+                            : d.effectiveness === 'STRONG'
+                            ? 'text-yellow-700'
+                            : 'text-red-700'
+                        }`}>
+                          {d.effectiveness}
+                        </span>
+                      </div>
                       <p className={`text-lg font-black mt-1 ${d.isCorrect ? 'text-green-700' : 'text-slate-700'}`}>
                         {d.percentage}
                       </p>
-                      <p className={`text-[9px] mt-1 font-semibold ${
-                        d.isCorrect
-                          ? 'text-green-700'
-                          : d.effectiveness === 'STRONG'
-                          ? 'text-yellow-700'
-                          : 'text-red-700'
-                      }`}>
-                        {d.effectiveness}
-                      </p>
+                      <div className="mt-2 pt-2 border-t border-slate-200/50">
+                        <p className="text-[9px] font-bold text-slate-400">P.Biserial</p>
+                        <p className={`font-mono text-sm font-bold ${
+                          d.isCorrect
+                            ? (d.pointBiserial > 0.2 ? 'text-green-700' : 'text-orange-600')
+                            : (d.pointBiserial < 0 ? 'text-slate-700' : 'text-red-600')
+                        }`}>
+                          {d.pointBiserial}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
+                <DistractorChart distractorData={result.distractors} />
               </div>
             </div>
           </td>
