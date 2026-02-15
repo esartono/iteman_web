@@ -116,7 +116,7 @@ const ExamCard = ({ exam, onViewAnalysis, onDelete }) => {
       {/* Info Tags */}
       <div className="flex gap-3 mb-6">
         <div className="bg-slate-50 px-3 py-1 rounded-full text-[10px] font-black text-slate-500 uppercase tracking-widest">
-          {exam.answerKey.length} Soal
+          {exam.answerKey?.length || 0} Soal
         </div>
         <div className="bg-indigo-50 px-3 py-1 rounded-full text-[10px] font-black text-indigo-600 uppercase tracking-widest">
           {exam.submissions?.length || 0} Siswa
